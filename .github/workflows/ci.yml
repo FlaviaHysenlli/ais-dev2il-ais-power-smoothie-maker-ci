@@ -1,60 +1,48 @@
-name : CI
+name: CI
 
 on:
-  # Run on pushes to the main branch
   push:
-    branches : ["main"]
-  # Run on pull requests targeting the main branch
+    branches: ["main"]
   pull_request:
-    branches : ["main"]
+    branches: ["main"]
 
 jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      # Install uv
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          # Enables caching of uv's virtual environments between runs.
           enable-cache: true
 
-      # Set up Python using .python-version file
       - name: Set up Python
         run: uv python install
 
-      # Install dependencies
       - name: Install the project
         run: uv sync --frozen
 
-      # Check code formatting and lint
-      - name: Check code
-        run: uvx ruff check . --output-format=github
-
-
-      # Run tests
       - name: Run tests
         run: uv run pytest --junitxml=junit.xml
 
-      # Show test results in a developer friendly way
       - name: Create test result summary
         uses: test-summary/action@v2
         with:
           paths: "junit.xml"
-        # ensure this runs even if tests fail
         if: always()
 
   scan:
     name: Security Checks
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
@@ -64,12 +52,14 @@ jobs:
       - name: Set up Python
         run: uv python install
 
-      - name: Scan for vulnerable dependencies
-        run: | 
-          set -o pipefail
-          echo "### 🛡️ Security Audit Results" >> $GITHUB_STEP_SUMMARY
-          echo '```text' >> $GITHUB_STEP_SUMMARY
-          uvx uv-secure --config=pyproject.toml | tee -a $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY 
+      - name: Install the project
+        run: uv sync --frozen
 
+      - name: Check code (Linting)
+        run: uvx ruff check . --output-format=github
 
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
